@@ -1,0 +1,303 @@
+---
+title: "McDonald Nutrition Clustering using Unsupervised Learning"
+author: "Takdir Zulhaq Dessiaming"
+date: "2022-09-07"
+output:   
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    theme: united
+    highlight: zenburn
+    df_print: paged
+---
+
+# INTRODUCTION
+
+McDonald's Corporation is an American fast food company, founded in 1940 as a restaurant operated by Richard and Maurice McDonald, in San Bernardino, California, United States.
+
+This dataset provides a nutrition analysis of every menu item on the US McDonald's menu, including breakfast, beef burgers, chicken and fish sandwiches, fries, salads, soda, coffee and tea, milkshakes, and desserts. This dataset is taken from Kaggle : https://www.kaggle.com/datasets/mcdonalds/nutrition-facts
+
+Our **Goal** is to clustering (dividing to some group) that will inform some information from the dataset. Eventually, each group have their characteristic of nutrition.
+
+We will use Unsupervised Learning : PCA and K-Means
+
+# IMPORT LIBRARY
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(FactoMineR)
+library(factoextra)
+library(tidyverse)
+library(ggiraphExtra)
+```
+
+# IMPORT DATA
+
+```{r}
+df <- read.csv("menu.csv")
+str(df)
+
+```
+
+As we can see, our data contain `chr`, so we have to remove them, because this Unsupervised Learning is good for numeric data only.
+
+# DATA CLEANING
+
+```{r}
+# Check Missing Value
+colSums(is.na(df))
+```
+
+We don't have NA Value here. We good to continue.
+
+```{r}
+df_num <- df %>% 
+  select(-c(Total.Fat....Daily.Value.,Saturated.Fat....Daily.Value.,Cholesterol....Daily.Value.,Sodium....Daily.Value.,Carbohydrates....Daily.Value.,Dietary.Fiber....Daily.Value.)) %>% 
+  select_if(is.numeric)
+
+df_num
+```
+
+We delete some columns like "...Daily.Value", because i think the information is double, except "Vitamins", "Calcium" and "Iron".
+
+# EXPLORATORY DATA ANALYSIS
+
+```{r}
+summary(df_num)
+```
+
+Above is the distribution of the covariance value of the data that has not been standardized (scaled). The variance of each variable differs greatly because the range/scale of each variable is different, as well as the covariance. **Variance and covariance values ​​are affected by the scale of the data**. The higher the scale, the higher the variance or covariance value.
+
+**Data with a high difference in scale between variables is not good for direct PCA analysis because it can cause bias**. PC1 is considered to have captured the highest variance and subsequent PCs are considered not to provide information.
+
+```{r}
+plot(prcomp(x=df_num))
+```
+
+As we can see, most of the information in the data is drop to `Sodium`, it's because the sodium contain hundred scale (high variance) compared to others. So for the good condition, we scale our data.
+
+## DATA PRE-PROCESSING 
+
+```{r}
+# scaling 
+df_scaled <- scale(df_num)
+head(df_scaled)
+```
+
+```{r}
+# melihat variansi yang dirangkum tiap PC (plot)
+plot(prcomp(x=df_scaled))
+
+```
+
+Now, our information is divided to other PC's and it's have the same scale, it's better than before.
+
+# PRINCIPAL COMPONENT ANALYSIS
+
+For doing principle component analysis in R we can use function `PCA`.
+
+```{r}
+
+pca <- PCA(df_scaled, scale. = F)
+
+# Check PCA result
+pca$eig
+
+```
+
+Insight 📌 :
+
+This is what our infromation data looks like. as we can see the arrow, it means that how the variable (column) contribute to PCs, if the arrow is like horizontal, it contribute to PC1 (Dim1), and if vertical, it contribute to PC2(Dim2. 
+
+The number means it our observation(data), it show the row of the data. And we can see, data 83 we can call it **outliers**.
+
+So this PCA, we can use to detect outliers too.
+
+```{r}
+fviz_eig(pca, ncp = 15, addlabels = T, main = "Variance explained by each dimensions")
+```
+
+50% of the variances can be explained by only using the first 2 dimensions, with the first dimensions can explain 48.8% of the total variances.
+
+We can keep around 80% of the information from our data by using only 4 dimensions. This mean that we can actually reduce the number of features on our dataset from 15 to just 4 numeric features.
+
+We can extract the values of PC1 to PC4 from all of the observations and put it into a new data frame. This data frame can later be analyzed using supervised learning classification technique or other purposes.
+
+And then, we take it and make it to a dataframe like below.
+
+```{r}
+df_80 <- as.data.frame(pca$ind$coord)[,1:4]
+head(df_80)
+```
+
+
+```{r}
+fviz_contrib(
+  X = pca, #model PCA
+  choice = "var", #menampilkan variable contribution
+  axes = 1 #mengacu pada PC ke-1
+)
+```
+
+We can see the variables (column) that most contribute to each PCs, above we see the PC1/Dim1.
+
+# CLUSTERING : K-Means
+
+Now we use K-Means method to our data to clustering.
+
+- Randomly assign number, from 1 to K, to each of the observations. These serve as initial cluster assignments for the observations.    
+
+- Iteratre until the cluster assignments stop changing. For each of the K clusters, compute the cluster centroid. The Kth cluster centroid is the vector of the p features means for the observations in the kth cluster. Assign each observation to the cluster whose centroid is closest (using euclidean distance or any other distance measurement)   
+
+## DATA CLEANING
+
+```{r}
+
+rownames(df) <- df$Item
+
+df_clean <- df %>% 
+  select(-c(Item, Total.Fat....Daily.Value.,Saturated.Fat....Daily.Value.,Cholesterol....Daily.Value.,Sodium....Daily.Value.,Carbohydrates....Daily.Value.,Dietary.Fiber....Daily.Value.))
+
+df_num_scale <- scale(df_clean)
+```
+
+First, we make the `Item` to an index, because eventually we want to keep to see the menu name after the clustering.This K-Means is good for numeric data only too.
+
+And then we delete the "Item" column, and others like we cleaning in the first time above.
+
+This K-means requires **scaled data**, because this method is counting the distance function. If we don't to that, the result will be bad.
+
+```{r}
+summary(df_num_scale)
+```
+
+## ELBOW METHOD
+
+Choosing the number of clusters using elbow method is arbitrary. The rule of thumb is we choose the number of cluster in the area of “bend of an elbow”, where the graph is total within sum of squares start to stagnate with the increase of the number of clusters.
+
+```{r}
+fviz_nbclust(
+  x = df_num_scale,
+  FUNcluster = kmeans,
+  method = "wss"
+)+ labs(subtitle = "Elbow method")
+
+```
+
+Using the elbow method, we know that 3 cluster is good enough since there is no significant decline in total within-cluster sum of squares on higher number of clusters. This method may be not enough since the optimal number of clusters is vague.
+
+## SILHOUETTE METHOD
+
+The silhouette method measures the silhouette coefficient, by calculating the mean intra-cluster distance and the mean nearest-cluster distance for each observations. We get the optimal number of clusters by choosing the number of cluster with the highest silhouette score (the peak).
+
+```{r}
+fviz_nbclust(df_num_scale, kmeans, "silhouette") + labs(subtitle = "Silhouette method")
+```
+
+As we can see the silhouette method above, number of clusters with maximum score is considered as the optimum k-clusters. The graph shows that the optimum number of cluster is 6.
+
+## CLUSTERING
+
+Now let's use our data to clustering using K-Means method.
+
+```{r}
+RNGkind(sample.kind = "Rounding")
+set.seed(123)
+
+df_kmeans <- kmeans(df_num_scale, centers=6)
+
+df_kmeans$withinss
+
+df_kmeans$tot.withinss
+```
+
+
+```{r}
+df_kmeans$size
+```
+We get 6 cluster (or we can say group), and it's size / number of our data in each cluster.
+
+```{r}
+df_kmeans$centers
+```
+
+```{r}
+df_clean$cluster <- as.factor(df_kmeans$cluster)
+```
+
+Now we input the label cluster to our data frame in df_clean, and make it to factor type.
+
+```{r}
+head(df_clean)
+```
+
+## GROUPING THE DATA BASED ON LABEL
+
+Doing grouping based on the clusters that are formed, to find out the character of each one.
+
+```{r}
+df_clean %>% 
+  group_by(cluster) %>% 
+  summarise_all(mean)
+```
+
+Now we have 6 cluster that each cluster has their each characteristic. Example, cluster with **high Calories** is cluster 1, so if we want to order menu with high calories, we choose the menu in cluster 1.
+
+### FILTERING DATA BASED ON CLUSTER LABEL
+
+We can filter the data based on cluster to ease the owner/cashier to decide the menu that similar to other menus.
+
+```{r}
+df_clean[df_clean$cluster==2,]
+```
+
+As example, we want to order the Hotcakes, but it's out of order. In this case we just look to the cluster 2 to find a similar nutrition or other menu that similar to Hotcakes.
+
+
+<!-- This is how the Cluster looks like. There are 6 cluster, that each cluster has some menu that similar. -->
+
+```{r}
+df_centroid <- df_clean %>% 
+  group_by(cluster) %>% 
+  summarise_all(mean)
+
+df_centroid %>% 
+  pivot_longer(-cluster) %>% 
+  group_by(name) %>% 
+  summarize(
+    group_min = which.min(value),
+    group_max = which.max(value))
+```
+To ease us to find the similar nutrition of the menus, we divide to 2 group, min and max.
+
+How we read it ?     
+
+- If we want food/drink with high Calories, we choose menu in cluster 1.    
+- If we want food/drink with high Carbohydrates, we choose menu in cluster 4.
+- If we want food/drink with less Sugars, we choose menu in cluster 6.
+- If we want food/drink not high Calories and less Calories, we choose menu in cluster 2.
+
+* Cluster 2 does not appear above, it means cluster 2 is in the middle, **Not High or Less in Nutrition**.
+
+# COMBINING CLUSTER WITH PCA
+
+```{r}
+
+fviz_cluster(object = df_kmeans, 
+             data = df_num_scale,
+             labelsize = 0)
+
+```
+
+# SUMMARY
+
+From the unsupervised learning analysis above, we can summarize that:   
+  
+- Using K-Means we can clustering (or we can say devide into some groups) our data. We have 6 cluster that each cluster have their nutrition characteristic.
+- Using PCA, we can reduce our dimension from 15 to just 4 dimension with keeping 80% information of our data.    
+- The improved data set obtained from unsupervised learning (eg.PCA) can be utilized further for supervised learning (classification) or for better data visualization (high dimensional data) with various insights.    
+
+
+
+
